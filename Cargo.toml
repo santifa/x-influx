@@ -1,0 +1,12 @@
+[package]
+name = "rinflux"
+version = "0.1.0"
+authors = ["Henrik Jürges <juerges.henrik@gmail.com>"]
+
+[dependencies]
+csv = "1.0.0-beta.5"
+chrono = "0.4"
+influent = "0.4.0"
+docopt = "0.8.1"
+log = "0.3.8"
+simple-logging = "1.0.1"
