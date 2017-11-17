@@ -8,17 +8,16 @@ use std::fmt::Debug;
 use std::fmt;
 use std::io;
 use std::thread;
-use std::sync::mpsc::{channel, Sender, Receiver};
+use std::sync::mpsc::{channel, Sender};
 use std::error::Error;
 use std::fs::File;
 use std::iter::Iterator;
 use std::io::{BufReader, BufRead, Read};
 
-use chrono::{Local, DateTime, NaiveDateTime, Utc};
 use docopt::Docopt;
+use chrono::{Local, Utc, TimeZone};
 use influent::create_client;
 use influent::client::Client;
-use influent::client::http::HttpClient;
 use influent::client::Credentials;
 use influent::measurement::{Measurement, Value};
 
@@ -83,7 +82,7 @@ Options:
   
   -m, --measure VAL    Name of the measurement value [default: data].
   -t, --tags VAL       Comma seperated list of tags associated to a value.
-  -T, --time VAL       Name of the timestamp column
+  -T, --time VAL       Name of the timestamp column [default: timestamp].
   -f, --format FMT     The timestamp format [default: %F %H:%M:%S]
                        See https://docs.rs/chrono/0.4.0/chrono/format/strftime/index.html
 
@@ -98,7 +97,7 @@ Options:
 /// Tags follow the same combination.
 #[derive(Debug, Clone)]
 struct Message {
-    time: NaiveDateTime,
+    time: i64,
     value: (String, String),
     tags: Vec<(String, String)>,
 }
@@ -106,7 +105,7 @@ struct Message {
 impl Default for Message {
     fn default() -> Message {
         Message {
-            time: Utc::now().naive_utc(),
+            time: Utc::now().timestamp(),
             value: ("".to_owned(), "".to_owned()),
             tags: vec![],
         }
@@ -164,7 +163,8 @@ fn start_influxdb_client(
             };
 
             let mut measure = Measurement::new(&db);
-            measure.add_field(&m.value.0, Value::String("msg.value.1"));
+            measure.add_field(&m.value.0, Value::String(&m.value.1));
+            measure.set_timestamp(m.time);
             for ref tag in &m.tags {
                 measure.add_tag(&tag.0, &tag.1);
             }
@@ -213,6 +213,7 @@ impl Layout {
 
     // search for the positions within the header row
     fn apply(&self, data: &[&str]) -> ConvertResult<(i32, Vec<i32>, i32)> {
+        println!("{:?}", data);
         let val = data.iter().position(|&e| e == self.value).ok_or(
             ConvertError::NotFound("Value"),
         )?;
@@ -245,7 +246,6 @@ struct CsvLayout {
     layout: Layout,
     del: char,
     skip_rows: i32,
-    skip_cols: Vec<i32>,
 }
 
 impl Default for CsvLayout {
@@ -254,7 +254,6 @@ impl Default for CsvLayout {
             layout: Layout::default(),
             del: ',',
             skip_rows: 0,
-            skip_cols: [].to_vec(),
         }
     }
 }
@@ -264,7 +263,6 @@ impl CsvLayout {
         CsvLayout {
             del: d.chars().next().unwrap_or(','),
             skip_rows: r.parse::<i32>().unwrap_or(-1),
-            skip_cols: vec![],
             layout: l,
         }
     }
@@ -292,15 +290,15 @@ impl CsvLayout {
 
                 let mut msg = Message::default();
                 for (j, col) in r.split(self.del).enumerate() {
-
                     if val_col == j as i32 {
                         msg.value = (self.layout.value.clone(), col.to_owned());
 
                     } else if time_col == j as i32 {
-                        match DateTime::parse_from_str(col, &self.layout.time.1) {
-                            Ok(t) => msg.time = t.naive_utc(),
+                        // either use the current timezone or a give one
+                        match Utc.datetime_from_str(col, &self.layout.time.1) {
+                            Ok(t) => msg.time = t.timestamp(),
                             Err(e) => {
-                                l.info(format!("Failed to parse Date at {}, {}; {}", i, i, e));
+                                l.info(format!("Failed to parse Date at {}, {}; {}", i, j, e));
                                 continue;
                             }
                         }
@@ -308,8 +306,6 @@ impl CsvLayout {
                         |e| e == &(j as i32),
                     )
                     {
-                        //tags_col.contains(&(j as i32)) {
-                        //let pos = ;
                         msg.tags.push(
                             (self.layout.tags[pos].to_owned(), col.to_owned()),
                         );
@@ -348,8 +344,6 @@ fn main() {
     );
     logger.info("Influx client created.");
 
-
-
     let layout = CsvLayout::new(
         _args.get_str("-D"),
         _args.get_str("--skip-rows"),
@@ -360,7 +354,7 @@ fn main() {
     );
     logger.debug(&layout);
 
-    for file in _args.get_vec("") {
+    for file in _args.get_vec("<file>") {
         if let Ok(reader) = File::open(file).map(|e| BufReader::new(e)) {
             if let Err(e) = layout.convert(&tx, reader, &logger) {
                 logger.info(format!(
@@ -368,6 +362,8 @@ fn main() {
                     file,
                     e
                 ));
+                // panic if we can not quit the influx client
+                assert!(tx.send(None).is_ok());
             }
         } else {
             logger.info(format!("Error: Failed to open file {}.", file));
@@ -383,24 +379,23 @@ fn main() {
 mod test {
     use super::*;
 
-    fn expected(l: CsvLayout, del: char, sr: i32, sc: Vec<i32>) {
+    fn expected(l: CsvLayout, del: char, sr: i32) {
         assert_eq!(l.del, del);
         assert_eq!(l.skip_rows, sr);
-        assert_eq!(l.skip_cols, sc);
     }
 
     #[test]
     fn test_csv_layout() {
         let layout = CsvLayout::new(";", "-1", Layout::default());
-        expected(layout, ';', -1, vec![]);
+        expected(layout, ';', -1);
         let layout = CsvLayout::new("\t", "3", Layout::default());
-        expected(layout, '\t', 3, vec![]);
+        expected(layout, '\t', 3);
     }
 
     #[test]
     fn test_layout_with_err() {
         let layout = CsvLayout::new("", "blub", Layout::default());
-        expected(layout, ',', -1, vec![]);
+        expected(layout, ',', -1);
     }
 
 
@@ -455,10 +450,10 @@ mod test {
             "test".to_owned(),
             &Logger(false),
         );
-        let time = Utc::now().naive_utc();
+        let time = Utc::now();
 
         let msg = Message {
-            time: time,
+            time: time.timestamp(),
             value: (String::from("power"), String::from("1")),
             tags: vec![],
         };
@@ -467,12 +462,19 @@ mod test {
         assert!(handler.unwrap().join().is_ok());
 
         //TODO verify result
-        let cred = Credentials {
+/*        let cred = Credentials {
             username: "",
             password: "",
             database: "test",
         };
-        let client = create_client(cred, host);
+        let client = create_client(cred, host);*/
+    }
+
+    fn expected_msg(m: Message, v: (&str, &str), t: Vec<(String, String)>, time: i64) {
+        assert_eq!(&m.value.0, v.0);
+        assert_eq!(&m.value.1, v.1);
+        assert_eq!(m.tags, t);
+        assert_eq!(m.time, time);
     }
 
     #[test]
@@ -488,17 +490,39 @@ mod test {
         assert_eq!(res, Ok(()));
 
         let msg = rx.recv().unwrap().unwrap();
-        println!("{:?}", msg);
-        assert_eq!(msg.value, ("data".to_owned(), "0".to_owned()));
+        let time = Utc.datetime_from_str("2017-10-10 00:00:00", "%F %H:%M:%S")
+            .unwrap();
+        expected_msg(msg, ("data", "0"), vec![], time.timestamp());
 
         let msg = rx.recv().unwrap().unwrap();
-        println!("{:?}", msg);
-        assert_eq!(msg.value, ("data".to_owned(), "1".to_owned()));
+        let time = Utc.datetime_from_str("2017-10-10 00:01:00", "%F %H:%M:%S")
+            .unwrap();
+        expected_msg(msg, ("data", "1"), vec![], time.timestamp());
 
         let msg = rx.recv().unwrap();
-        println!("{:?}", msg);
         assert!(msg.is_none());
+    }
 
+    #[test]
+    fn test_complex_import() {
+        use std::io::Cursor;
+
+        let csv = "timestamp;Profilwert kWh;P in kW;Status
+01.01.2016 00:15;108;432;220
+01.01.2016 00:30;103.5;414;220
+01.01.2016 00:45;103.5;414;220
+01.01.2016 01:00;103.5;414;220
+";
+        let reader = BufReader::new(Cursor::new(csv));
+        let mut csv_layout = CsvLayout::default();
+        csv_layout.del = ';';
+        csv_layout.layout.value = "Profilwert kWh".to_owned();
+        let (tx, rx) = channel();
+
+        let res = csv_layout.convert(&tx, reader, &Logger(false));
+        assert_eq!(res, Ok(()));
+
+        //TODO verify test results
 
     }
 }
