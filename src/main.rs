@@ -87,7 +87,7 @@ Options:
                        See https://docs.rs/chrono/0.4.0/chrono/format/strftime/index.html
 
   -D, --delimiter DEL  Use another csv delimiter [default: ,].
-  --skip-rows NUM      Remove first NUM lines from file [default: -1].
+  --skip-rows NUM      Remove first NUM lines from file [default: 0].
 ";
 
 
@@ -189,7 +189,8 @@ fn start_influxdb_client(
 struct Layout {
     value: String,
     tags: Vec<String>,
-    time: (String, String),
+    time: String,
+    tformat: String,
 }
 
 impl Default for Layout {
@@ -197,7 +198,8 @@ impl Default for Layout {
         Layout {
             value: String::from("data"),
             tags: [].to_vec(),
-            time: (String::from("timestamp"), String::from("%F %H:%M:%S")),
+            time: String::from("timestamp"),
+            tformat: String::from("%F %H:%M:%S"),
         }
     }
 }
@@ -206,31 +208,31 @@ impl Layout {
     fn new(value: &str, tags: &str, time: (&str, &str)) -> Layout {
         Layout {
             value: value.to_owned(),
-            time: (time.0.to_owned(), time.1.to_owned()),
+            time: time.0.to_owned(),
+            tformat: time.1.to_owned(),
             tags: tags.split(',').map(|e| e.to_owned()).collect(),
         }
     }
 
     // search for the positions within the header row
-    fn apply(&self, data: &[&str]) -> ConvertResult<(i32, Vec<i32>, i32)> {
-        println!("{:?}", data);
+    fn apply(&self, data: &[&str]) -> ConvertResult<(usize, Vec<usize>, usize)> {
         let val = data.iter().position(|&e| e == self.value).ok_or(
             ConvertError::NotFound("Value"),
         )?;
 
         // filter positions of tags
-        let mut tags: Vec<i32> = Vec::new();
+        let mut tags: Vec<usize> = Vec::new();
         for ref tag in &self.tags {
             if let Some(p) = data.iter().position(|e| e == tag) {
-                tags.push(p as i32);
+                tags.push(p);
             }
         }
 
-        let time = data.iter().position(|&e| e == self.time.0).ok_or(
+        let time = data.iter().position(|&e| e == self.time).ok_or(
             ConvertError::NotFound("Timestamp"),
         )?;
 
-        Ok((val as i32, tags, time as i32))
+        Ok((val, tags, time))
     }
 }
 
@@ -245,7 +247,7 @@ impl Layout {
 struct CsvLayout {
     layout: Layout,
     del: char,
-    skip_rows: i32,
+    skip_rows: usize,
 }
 
 impl Default for CsvLayout {
@@ -262,7 +264,7 @@ impl CsvLayout {
     fn new(d: &str, r: &str, l: Layout) -> CsvLayout {
         CsvLayout {
             del: d.chars().next().unwrap_or(','),
-            skip_rows: r.parse::<i32>().unwrap_or(-1),
+            skip_rows: r.parse::<usize>().unwrap_or(0),
             layout: l,
         }
     }
@@ -273,7 +275,7 @@ impl CsvLayout {
         reader: BufReader<R>,
         l: &Logger,
     ) -> ConvertResult<()> {
-        let mut csv_start = reader.lines().skip(self.skip_rows as usize);
+        let mut csv_start = reader.lines().skip(self.skip_rows);
         let header: String = match csv_start.next() {
             Some(Ok(h)) => h,
             _ => {
@@ -290,22 +292,19 @@ impl CsvLayout {
 
                 let mut msg = Message::default();
                 for (j, col) in r.split(self.del).enumerate() {
-                    if val_col == j as i32 {
+                    if val_col == j {
                         msg.value = (self.layout.value.clone(), col.to_owned());
 
-                    } else if time_col == j as i32 {
+                    } else if time_col == j {
                         // either use the current timezone or a give one
-                        match Utc.datetime_from_str(col, &self.layout.time.1) {
+                        match Utc.datetime_from_str(col, &self.layout.tformat) {
                             Ok(t) => msg.time = t.timestamp(),
                             Err(e) => {
                                 l.info(format!("Failed to parse Date at {}, {}; {}", i, j, e));
                                 continue;
                             }
                         }
-                    } else if let Some(pos) = (&tags_col).into_iter().position(
-                        |e| e == &(j as i32),
-                    )
-                    {
+                    } else if let Some(pos) = (&tags_col).into_iter().position(|e| e == &j) {
                         msg.tags.push(
                             (self.layout.tags[pos].to_owned(), col.to_owned()),
                         );
@@ -379,7 +378,7 @@ fn main() {
 mod test {
     use super::*;
 
-    fn expected(l: CsvLayout, del: char, sr: i32) {
+    fn expected(l: CsvLayout, del: char, sr: usize) {
         assert_eq!(l.del, del);
         assert_eq!(l.skip_rows, sr);
     }
@@ -387,7 +386,7 @@ mod test {
     #[test]
     fn test_csv_layout() {
         let layout = CsvLayout::new(";", "-1", Layout::default());
-        expected(layout, ';', -1);
+        expected(layout, ';', 0);
         let layout = CsvLayout::new("\t", "3", Layout::default());
         expected(layout, '\t', 3);
     }
@@ -395,12 +394,12 @@ mod test {
     #[test]
     fn test_layout_with_err() {
         let layout = CsvLayout::new("", "blub", Layout::default());
-        expected(layout, ',', -1);
+        expected(layout, ',', 0);
     }
 
 
     #[test]
-    fn test_layout() {
+    fn test_layout_apply() {
         let mut layout = Layout::default();
         let pos = layout.apply(&["test", "timestamp", "data"]);
         assert_eq!(pos.unwrap(), (2, [].to_vec(), 1));
@@ -411,7 +410,7 @@ mod test {
             String::from("plz"),
             String::from("halle"),
         ];
-        layout.time = (String::from("datum"), String::from(""));
+        layout.time = String::from("datum");
 
         let pos = layout.apply(
             &[
@@ -428,14 +427,14 @@ mod test {
     }
 
     #[test]
-    fn test_layout_wrong() {
+    fn test_layout_apply_wrong() {
         let mut layout = Layout::default();
         layout.value = String::from("val");
         let pos = layout.apply(&["datum", "", ""]);
         assert_eq!(pos.err().unwrap(), ConvertError::NotFound("Value"));
 
         layout.value = String::from("datum");
-        layout.time = (String::from("val"), String::from(""));
+        layout.time = String::from("val");
         let pos = layout.apply(&["datum", "", ""]);
         assert_eq!(pos.err().unwrap(), ConvertError::NotFound("Timestamp"));
     }
@@ -469,6 +468,7 @@ mod test {
         };
         let client = create_client(cred, host);*/
     }
+
 
     fn expected_msg(m: Message, v: (&str, &str), t: Vec<(String, String)>, time: i64) {
         assert_eq!(&m.value.0, v.0);
@@ -517,10 +517,21 @@ mod test {
         let mut csv_layout = CsvLayout::default();
         csv_layout.del = ';';
         csv_layout.layout.value = "Profilwert kWh".to_owned();
+        csv_layout.layout.tformat = "%d.%m.%Y %R".to_owned();
         let (tx, rx) = channel();
 
         let res = csv_layout.convert(&tx, reader, &Logger(false));
         assert_eq!(res, Ok(()));
+
+        let msg = rx.recv().unwrap().unwrap();
+        let time = Utc.datetime_from_str("01.01.2016 00:15", "%d.%m.%Y %R")
+            .unwrap();
+        expected_msg(msg, ("Profilwert kWh", "108"), vec![], time.timestamp());
+
+        let msg = rx.recv().unwrap().unwrap();
+        let time = Utc.datetime_from_str("01.01.2016 00:30", "%d.%m.%Y %R")
+            .unwrap();
+        expected_msg(msg, ("Profilwert kWh", "103.5"), vec![], time.timestamp());
 
         //TODO verify test results
 
