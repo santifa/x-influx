@@ -1,4 +1,3 @@
-extern crate csv;
 extern crate docopt;
 extern crate chrono;
 extern crate influent;
@@ -103,7 +102,7 @@ struct Message {
 }
 
 impl Default for Message {
-    fn default() -> Message {
+    fn default() -> Self {
         Message {
             time: Utc::now().timestamp(),
             value: ("".to_owned(), "".to_owned()),
@@ -194,7 +193,7 @@ struct Layout {
 }
 
 impl Default for Layout {
-    fn default() -> Layout {
+    fn default() -> Self {
         Layout {
             value: String::from("data"),
             tags: [].to_vec(),
@@ -205,7 +204,7 @@ impl Default for Layout {
 }
 
 impl Layout {
-    fn new(value: &str, tags: &str, time: (&str, &str)) -> Layout {
+    fn new(value: &str, tags: &str, time: (&str, &str)) -> Self {
         Layout {
             value: value.to_owned(),
             time: time.0.to_owned(),
@@ -310,7 +309,7 @@ impl CsvLayout {
                         );
                     }
                 }
-
+                l.debug(format!("msg: {:?}", msg));
                 if let Err(e) = tx.send(Some(msg)) {
                     l.info(format!("Failed to send message. {}", e));
                 }
@@ -371,6 +370,7 @@ fn main() {
 
     if let Ok(h) = handle {
         assert!(h.join().is_ok());
+        logger.info("Successfully imported new data.");
     }
 }
 
@@ -532,8 +532,33 @@ mod test {
         let time = Utc.datetime_from_str("01.01.2016 00:30", "%d.%m.%Y %R")
             .unwrap();
         expected_msg(msg, ("Profilwert kWh", "103.5"), vec![], time.timestamp());
+    }
 
-        //TODO verify test results
+    #[test]
+    fn test_import() {
+        use std::io::Cursor;
 
+        let csv = "timestamp;Profilwert kWh;P in kW;Status
+01.01.2016 00:15;108;432;220
+01.01.2016 00:30;103.5;414;220
+01.01.2016 00:45;103.5;414;220
+01.01.2016 01:00;104.5;414;220
+";
+        let reader = BufReader::new(Cursor::new(csv));
+        let mut csv_layout = CsvLayout::default();
+        csv_layout.del = ';';
+        csv_layout.layout.value = "Profilwert kWh".to_owned();
+        csv_layout.layout.tformat = "%d.%m.%Y %R".to_owned();
+
+        let (handle, tx) = start_influxdb_client(
+            "http://localhost:8086".to_owned(),
+            "testuser".to_owned(),
+            "testpass".to_owned(),
+            "test".to_owned(),
+            &Logger(false),
+        );
+        let res = csv_layout.convert(&tx, reader, &Logger(false));
+        assert!(res.is_ok());
+        assert!(handle.unwrap().join().is_ok());
     }
 }
