@@ -1,3 +1,10 @@
+//! x-influx
+//!
+//! This program feeds influxdb with input data
+//! from some source.
+//!
+//! At the moment only CSV is supported.
+//! See `USAGE` for arguments.
 extern crate docopt;
 extern crate chrono;
 extern crate influent;
@@ -20,29 +27,33 @@ use influent::client::Client;
 use influent::client::Credentials;
 use influent::measurement::{Measurement, Value};
 
-// A simple logger which only
-// distinguishes between info and debug
+/// A simple logger which only
+/// distinguishes between info and debug
 #[derive(Debug, Clone)]
 struct Logger(bool);
 
 impl Logger {
     fn info<T: Debug>(&self, s: T) {
-        println!("{}   {:?}", Local::now().to_rfc3339(), s);
+        println!("{} Info {:?}", Local::now().to_rfc3339(), s);
     }
 
     fn debug<T: Debug>(&self, s: T) {
         if self.0 {
-            println!("{}   {:?}", Local::now().to_rfc3339(), s);
+            println!("{} Debug {:?}", Local::now().to_rfc3339(), s);
         }
     }
 }
 
 // do some error handling
+/// Internal result which throws an internal error if
+/// something bad happens.
 type ConvertResult<T> = Result<T, ConvertError>;
 
 #[derive(Debug, PartialEq)]
 pub enum ConvertError {
+    /// If some element is not found but required.
     NotFound(&'static str),
+    /// If the row conversion failed.
     ImportErr(&'static str, i32),
 }
 
@@ -66,6 +77,7 @@ impl Error for ConvertError {
     }
 }
 
+/// Program Flags and Options
 const USAGE: &'static str = "
 Usage: rinflux [options] <file>...
        rinflux --help
@@ -155,7 +167,7 @@ fn start_influxdb_client(
                 }
             };
 
-            // exit is we're done
+            // exit if we're done
             let m = match msg {
                 Some(m) => m,
                 None => break,
@@ -311,7 +323,7 @@ impl CsvLayout {
                 }
                 l.debug(format!("msg: {:?}", msg));
                 if let Err(e) = tx.send(Some(msg)) {
-                    l.info(format!("Failed to send message. {}", e));
+                    l.info(format!("Error: Failed to send message. {}", e));
                 }
             } else {
                 l.info(format!("Error: Failed to read row {}", i));
@@ -319,13 +331,12 @@ impl CsvLayout {
         }
 
         if let Err(e) = tx.send(None) {
-            l.info(format!("Failed to send last message. {}", e));
+            l.info(format!("Error: Failed to send last message. {}", e));
         }
 
         Ok(())
     }
 }
-
 
 fn main() {
     let _args = Docopt::new(USAGE)
@@ -374,6 +385,8 @@ fn main() {
     }
 }
 
+
+// Unit Tests
 #[cfg(test)]
 mod test {
     use super::*;
