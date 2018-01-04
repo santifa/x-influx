@@ -2,6 +2,23 @@
 name = "x-influx"
 version = "0.9.0"
 authors = ["Henrik Jürges <juerges.henrik@gmail.com>"]
+description = "A simple import tool for influxdb."
+
+# documentation stuff
+#documentation =
+homepage = "https://github.com/santifa/x-influx"
+repository = "https://github.com/santifa/x-influx"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-file = "LICENSE"
+
+# how to categorize
+keywords = ["cli", "influxdb", "csv"]
+categories = ["Command line utilities"]
+
+# links
+[badges]
+appveyor = { repository = "https://github.com/santifa/x-influx", branch = "master", service = "github" }
 
 [dependencies]
 chrono = "~0.4"
