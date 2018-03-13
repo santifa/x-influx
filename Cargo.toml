@@ -9,7 +9,6 @@ description = "A simple import tool for influxdb."
 homepage = "https://github.com/santifa/x-influx"
 repository = "https://github.com/santifa/x-influx"
 readme = "README.md"
-license = "GPL-3.0-or-later"
 license-file = "LICENSE"
 
 # how to categorize
@@ -19,10 +18,11 @@ categories = ["Command line utilities"]
 # links
 [badges]
 appveyor = { repository = "https://github.com/santifa/x-influx", branch = "master", service = "github" }
+travis-ci = { repository = "https://travis-ci.org/santifa/x-influx", branch = "master" }
 
 [dependencies]
 chrono = "~0.4"
 influent = "~0.4"
 docopt = "~0.8"
-log = "~0.3"
-simple-logging = "~1.0"
+serde = "~1.0"
+serde_derive = "~1.0"
