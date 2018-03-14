@@ -37,15 +37,28 @@ use chrono::{TimeZone, Utc};
 #[macro_use]
 mod error;
 mod client;
+mod mapping;
 
-use error::*;
-use client::*;
+use error::{ConvertError, ConvertResult};
+use client::{InfluxClient, Message};
+use mapping::{Layout, Mapper};
+
+const VERSION: &'static str = "
+Version 0.5 of x-influx.
+This is a simple cli tool to import data into influxdb.
+    
+x-influx  Copyright (C) 2018  Henrik Jürges
+This program comes with ABSOLUTELY NO WARRANTY;
+This is free software, and you are welcome to redistribute it
+under certain conditions; see LICENSE file for details.
+";
 
 /// Program Flags and Options
 const USAGE: &'static str = "
 Usage: x-influx [options] <file>...
-       x-influx i [options] 
-       x-influx --help | --version
+       x-influx b [options] <file>...
+       x-influx i [options]
+       x-influx (-h | --help) | --version
 
 Options:
   -h, --help           Print this help message.
@@ -68,72 +81,24 @@ Options:
   --skip-rows NUM      Remove first NUM lines from file [default: 0].
 ";
 
-const VERSION: &'static str = "
-Version 0.5 of x-influx.
-This is a simple cli tool to import data into influxdb.
-    
-x-influx  Copyright (C) 2018  Henrik Jürges
-This program comes with ABSOLUTELY NO WARRANTY;
-This is free software, and you are welcome to redistribute it
-under certain conditions; see LICENSE file for details.
-";
-
-/// The basic conversion between some data and influx is a mapping
-/// between the value names for a series and a maybe empty list
-/// of additional tags for the series.
-/// At last a mapping for timestamps is needed, with name and
-/// format.
-/// See https://docs.rs/chrono/0.4.0/chrono/format/strftime/index.html
-/// for time formating.
-#[derive(Debug, Clone)]
-struct Layout {
-    value: String,
-    tags: Vec<String>,
-    time: String,
-    tformat: String,
-}
-
-impl Default for Layout {
-    fn default() -> Self {
-        Layout {
-            value: String::from("data"),
-            tags: [].to_vec(),
-            time: String::from("timestamp"),
-            tformat: String::from("%F %H:%M:%S"),
-        }
-    }
-}
-
-impl Layout {
-    fn new(value: &str, tags: &str, time: (&str, &str)) -> Self {
-        Layout {
-            value: value.to_owned(),
-            time: time.0.to_owned(),
-            tformat: time.1.to_owned(),
-            tags: tags.split(',').map(|e| e.to_owned()).collect(),
-        }
-    }
-
-    // search for the positions within the header row
-    fn apply(&self, data: &[&str]) -> ConvertResult<(usize, Vec<usize>, usize)> {
-        let val = data.iter()
-            .position(|&e| e == self.value)
-            .ok_or(ConvertError::NotFound("Value"))?;
-
-        // filter positions of tags
-        let mut tags: Vec<usize> = Vec::new();
-        for ref tag in &self.tags {
-            if let Some(p) = data.iter().position(|e| e == tag) {
-                tags.push(p);
-            }
-        }
-
-        let time = data.iter()
-            .position(|&e| e == self.time)
-            .ok_or(ConvertError::NotFound("Timestamp"))?;
-
-        Ok((val, tags, time))
-    }
+#[derive(Debug, Deserialize)]
+struct Args {
+    flag_verbose: bool,
+    flag_version: bool,
+    cmd_i: bool, // interactive mode
+    cmd_b: bool, // batch mode
+    flag_user: String,
+    flag_password: String,
+    flag_database: String,
+    flag_server: String,
+    flag_series: String,
+    flag_measure: String,
+    flag_tags: String,
+    flag_time: String,
+    flag_format: String,
+    flag_delimiter: char,
+    flag_skip_rows: u32,
+    arg_file: Vec<String>,
 }
 
 /// A basic CSV file uses the comma for seperation and
@@ -191,7 +156,7 @@ impl CsvLayout {
 
                 for (j, col) in r.split(self.del).enumerate() {
                     if val_col == j {
-                        value = (self.layout.value.clone(), col.to_owned());
+                        value = (self.layout.measure.clone(), col.to_owned());
                     } else if time_col == j {
                         // either use the current timezone or a give one
                         time = match Utc.datetime_from_str(col, &self.layout.tformat) {
@@ -220,42 +185,47 @@ impl CsvLayout {
     }
 }
 
+fn interactive_mode() {}
+
 fn main() {
-    let _args = Docopt::new(USAGE)
-        .and_then(|d| d.argv(args().into_iter()).parse())
+    let _args: Args = Docopt::new(USAGE)
+        .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());
 
-    if _args.get_bool("-V") {
+    if _args.flag_version {
         println!("{}", VERSION);
-        return;
     }
 
-    if _args.get_bool("-v") {
-        set_debug!()
-        //LOGGER.set_debug();
+    if _args.flag_verbose {
+        set_debug!();
     }
-    //println!("{:?}", LOGGER.0);
-    //let logger = Logger();
+
     let client = match InfluxClient::new(
-        _args.get_str("-s").to_owned(),
-        _args.get_str("-u").to_owned(),
-        _args.get_str("-p").to_owned(),
-        _args.get_str("-d").to_owned(),
-        _args.get_str("-S").into(),
+        _args.flag_server,
+        _args.flag_user,
+        _args.flag_password,
+        _args.flag_database,
+        _args.flag_series,
     ) {
-        Ok(c) => {
-            info!("Influx client created.");
-            c
-        }
+        Ok(c) => c,
         Err(e) => {
-            error!(format!("Failed to start client. {}", e));
+            println!("Failed to start client. {}", e);
             return;
         }
     };
-    /*let (handle, tx) = start_influxdb_client(
-        &logger,
-);*/
 
+    let layout = Layout {
+        measure: _args.flag_measure,
+        tags: _args.flag_tags.split(',').map(|e| e.to_owned()).collect(),
+        time: _args.flag_time,
+        tformat: _args.flag_format,
+    };
+
+    match _args.cmd_i {
+        true => interactive_mode(),
+        false => {}
+    }
+    /*
     let layout = CsvLayout::new(
         _args.get_str("-D"),
         _args.get_str("--skip-rows"),
@@ -281,9 +251,9 @@ fn main() {
             info!(format!("Error: Failed to open file {}.", file));
         }
     }
-
+*/
     match client.join() {
-        Ok(_) => info!("Successfully imported new data."),
+        Ok(_) => info!("Gracefull shutdown."),
         Err(e) => error!(format!("{}", e)),
     }
 }
@@ -291,14 +261,14 @@ fn main() {
 // Unit Tests
 #[cfg(test)]
 mod test {
-    use super::*;
+    /*use super::*;
     use std::sync::mpsc::channel;
 
     fn expected(l: CsvLayout, del: char, sr: usize) {
         assert_eq!(l.del, del);
         assert_eq!(l.skip_rows, sr);
     }
-    /*
+    
     #[test]
     fn test_csv_layout() {
         let layout = CsvLayout::new(";", "-1", Layout::default());

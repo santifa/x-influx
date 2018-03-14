@@ -5,7 +5,7 @@ use std::sync::mpsc::{channel, Sender};
 use influent::client::{Client, Credentials};
 use influent::measurement::{Measurement, Value};
 use chrono::{DateTime, Utc};
-use error::{ConvertError, ConvertResult, LOGGER};
+use error::{ConvertError, ConvertResult};
 
 /// Basic format for passing messages to
 /// the influxdb client.
@@ -13,9 +13,9 @@ use error::{ConvertError, ConvertResult, LOGGER};
 /// Tags follow the same combination.
 #[derive(Debug, Clone)]
 pub struct Message {
-    pub time: i64, // unix timestamp in seconds
-    pub value: (String, String),
-    pub tags: Vec<(String, String)>,
+    time: i64, // unix timestamp in seconds
+    value: (String, String),
+    tags: Vec<(String, String)>,
 }
 
 impl Message {
@@ -46,13 +46,6 @@ impl InfluxClient {
             .send(None)
             .map_err(ConvertError::Send)
             .and_then(|()| self.thread_handle.join().map_err(ConvertError::Join))
-        /*if let Err(e) = self.tx.send(None) {
-            LOGGER.error(format!("Gracefull shutdown failed {:?}", e));
-        }
-        if let Err(e) = self.thread_handle.join() {
-            LOGGER.error(format!("Gracefull shutdown failed {:?}", e));
-        }*/
-        //Ok(());
     }
 
     /// Convient method for sending data to running background influx client.
@@ -84,12 +77,12 @@ impl InfluxClient {
                 vec![&hosts],
             );
 
-            info!("Influx client up and running.");
+            info!("Background influx client up and running.");
             loop {
                 let msg: Option<Message> = match rx.recv() {
                     Ok(m) => m,
                     Err(e) => {
-                        error!(format!("Can not recieve message. {}", e));
+                        error!(format!("Can't recieve message. {}", e));
                         continue; // maybe some better error handling
                     }
                 };
@@ -100,6 +93,7 @@ impl InfluxClient {
                     None => break,
                 };
 
+                debug!(format!("Incoming: {:?}", m));
                 let mut measure = Measurement::new(&series);
                 measure.add_field(&m.value.0, Value::String(&m.value.1));
                 measure.set_timestamp(m.time * 1000000000); // convert to nanoseconds
@@ -125,6 +119,7 @@ impl InfluxClient {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::time::Duration;
     use chrono::NaiveDateTime;
 
     // clear and create the test db instance
@@ -150,11 +145,12 @@ mod test {
             "testpass".into(),
             "test".into(),
             "try".into(),
-        )
+        ).unwrap()
     }
 
     // check if a message is correctly inserted
     fn validate(msg: &Message) {
+        thread::sleep(Duration::from_millis(100));
         let client = create_client(
             Credentials {
                 username: "testuser".into(),
@@ -175,18 +171,14 @@ mod test {
     fn test_simple_import() {
         // try insert into test influxdb and query result
         let client = start_client();
-
         let msg = Message::new(Utc::now(), ("power".into(), "1".into()), vec![]);
-        client.tx.send(Some(msg.clone()));
-        thread::sleep_ms(100);
+        assert!(client.send(msg.clone()).is_ok());
         validate(&msg);
 
         let msg = Message::new(Utc::now(), ("power".into(), "2".into()), vec![]);
-        client.tx.send(Some(msg.clone()));
-        thread::sleep_ms(10);
+        assert!(client.send(msg.clone()).is_ok());
         validate(&msg);
 
-        client.tx.send(None);
-        assert!(client.thread_handle.unwrap().join().is_ok());
+        assert!(client.join().is_ok());
     }
 }

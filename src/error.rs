@@ -1,69 +1,54 @@
 use std::fmt;
-use std::fmt::Debug;
 use std::error::Error;
 use std::io;
-use std::mem;
 use std::any::Any;
 use std::marker::Send;
 use std::sync::mpsc;
-use chrono::Local;
 use client::Message;
 
 /// A simple constant logger which
-/// can be used through the whole program
+/// can be used through the whole program.
+/// mut static is required to modify the log level.
 #[derive(Debug)]
+pub struct Logger(pub Level);
+pub static mut LOGGER: &'static Logger = &Logger(Level::Info);
+
+/// Instead of true and false a more verbose declaration of log levels.
+#[derive(Debug, PartialEq)]
 pub enum Level {
     Debug,
     Info,
 }
 
-#[derive(Debug)]
-pub struct Logger(pub Level);
-pub static mut LOGGER: &'static Logger = &Logger(Level::Info);
-
 #[macro_export]
 macro_rules! info {
-    ($e:expr) => {unsafe { LOGGER.info($e)}};
-}
-
-#[macro_export]
-macro_rules! debug {
-    ($e:expr) => {unsafe { LOGGER.debug($e)}};
+    ($e:expr) => { println!("{} Info: {:?}", Utc::now().format("%F %T"), $e); }
 }
 
 #[macro_export]
 macro_rules! error {
-    ($e:expr) => {unsafe { LOGGER.error($e)}};
+    ($e:expr) => { println!("{} Error: {:?}", Utc::now().format("%F %T"), $e); }
 }
 
+/// Print debug messages only if the logger struct
+/// defines debug as log level.
+#[macro_export]
+macro_rules! debug {
+    ($e:expr) => {unsafe {
+        use error::{Level, LOGGER};
+        if LOGGER.0 == Level::Debug {
+            println!("{} Debug: {:?}", Utc::now().format("%F %T"), $e);
+        }
+    }}
+}
+
+/// Change the log level to debug.
 #[macro_export]
 macro_rules! set_debug {
-    () => {unsafe { LOGGER = &Logger(Level::Debug); }}
-}
-
-impl Logger {
-    pub fn info<T: Debug>(&self, s: T) {
-        println!("{} Info: {:?}", Local::now().format("%F %T"), s);
-    }
-
-    pub fn error<T: Debug>(&self, s: T) {
-        println!("{} Error: {:?}", Local::now().format("%F %T"), s);
-    }
-
-    pub fn debug<T: Debug>(&self, s: T) {
-        if let Level::Debug = self.0 {
-            println!("{} Debug: {:?}", Local::now().format("%F %T"), s);
-        }
-    }
-
-    /// set debuging to true which is not reversable
-    pub fn set_debug(&self) {
-        //self.0 = Level::Debug;
-        //unsafe {mem::transmute<Level::Info, Level::Debug>(self.0)};
-        //mem::replace(&mut self.0, Level::Debug);
-        //self.0 = true;
-        //self.0 = true;
-    }
+    () => {unsafe {
+        use error::{Level, LOGGER, Logger};
+        LOGGER = &Logger(Level::Debug);
+    }}
 }
 
 /// Internal result which throws an error if
@@ -103,8 +88,8 @@ impl Error for ConvertError {
         match *self {
             ConvertError::NotFound(ref s) => s,
             ConvertError::Import(ref s, _) => s,
-            ConvertError::Influx(ref err) => err.description(),
             ConvertError::Join(_) => "Failed to gracefully shutdown the influx client",
+            ConvertError::Influx(ref err) => err.description(),
             ConvertError::Send(ref err) => err.description(),
         }
     }
@@ -126,4 +111,20 @@ impl From<mpsc::SendError<Option<Message>>> for ConvertError {
     fn from(err: mpsc::SendError<Option<Message>>) -> ConvertError {
         ConvertError::Send(err)
     }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[allow(unused_unsafe)]
+    #[test]
+    fn test_logger() {
+        unsafe {
+            assert_eq!(LOGGER.0, Level::Info);
+            set_debug!();
+            assert_eq!(LOGGER.0, Level::Debug);
+        }
+    }
+
 }
