@@ -6,6 +6,14 @@
 use error::{ConvertError, ConvertResult};
 use client::InfluxClient;
 
+pub use self::interactive::Interactive;
+pub use self::csv::Csv;
+
+mod interactive;
+mod csv;
+
+/// A layout describes the names for the database
+/// fields used by influx.
 /// See https://docs.rs/chrono/0.4.0/chrono/format/strftime/index.html
 /// for time formating.
 #[derive(Debug, Clone)]
