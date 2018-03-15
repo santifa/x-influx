@@ -18,7 +18,7 @@
 //! This program feeds influxdb with input data
 //! from some source.
 //!
-//! At the moment only CSV is supported.
+//! License is GPL
 //! See `USAGE` for arguments.
 extern crate chrono;
 extern crate docopt;
@@ -26,7 +26,7 @@ extern crate influent;
 #[macro_use]
 extern crate serde_derive;
 
-use std::env::args;
+use std::io::{self, Write};
 use std::fs::File;
 use std::iter::Iterator;
 use std::io::{BufRead, BufReader, Read};
@@ -55,10 +55,11 @@ under certain conditions; see LICENSE file for details.
 
 /// Program Flags and Options
 const USAGE: &'static str = "
-Usage: x-influx [options] <file>...
-       x-influx b [options] <file>...
-       x-influx i [options]
-       x-influx (-h | --help) | --version
+Usage: 
+  x-influx i [options]
+  x-influx b [options] <file>... 
+  x-influx [options] <file>... 
+  x-influx (-h | --help) | --version
 
 Options:
   -h, --help           Print this help message.
@@ -101,6 +102,82 @@ struct Args {
     arg_file: Vec<String>,
 }
 
+#[derive(Debug)]
+struct Interactive {}
+
+impl Interactive {
+    /// Read some string from stdin and trim.
+    fn read_string(&self, msg: &str) -> ConvertResult<String> {
+        let mut buffer = String::new();
+        print!("{}", msg);
+        try!(io::stdout().flush());
+        try!(io::stdin().read_line(&mut buffer));
+        Ok(buffer.trim().into())
+    }
+
+    /// Return user input tuple or error if some bad io happens.
+    fn read_input(&self, layout: &Layout) -> ConvertResult<(String, String, Vec<String>)> {
+        let measure = try!(self.read_string(&format!("Measurement [{}]: ", layout.measure)));
+        let time = try!(self.read_string(&format!("Time [{}][{}]: ", layout.time, layout.tformat)));
+        let tags: Vec<String> =
+            try!(self.read_string(&format!("Tags [{}]: ", layout.tags.join(","))))
+                .split(",")
+                .map(|s| s.into())
+                .collect();
+        Ok((measure, time, tags))
+    }
+}
+
+/// The interactive mode allows to provide all needed
+/// input data by hand.
+impl Mapper for Interactive {
+    fn import(&self, layout: &Layout, client: &InfluxClient) -> ConvertResult<()> {
+        println!("Interactive mode...");
+        println!("Insert tags comma separated.\nExit with C-d");
+
+        loop {
+            let (measure, time, tags) = match self.read_input(layout) {
+                Ok((m, t, ta)) => (m, t, ta),
+                Err(e) => {
+                    error!(format!("Failure: {}", e));
+                    continue;
+                }
+            };
+
+            let time = match Utc.datetime_from_str(&time, &layout.tformat) {
+                Ok(t) => t,
+                Err(e) => {
+                    error!(format!("Parsing time failed: {}", e));
+                    continue;
+                }
+            };
+
+            let tags = layout
+                .tags
+                .iter()
+                .filter(|e| !e.is_empty())
+                .map(|e| e.to_string())
+                .zip(tags)
+                .collect();
+
+            debug!(format!("{},{},{:?}", measure, time, tags));
+            let msg = Message::new(time, (layout.measure.clone(), measure), tags);
+            if let Err(e) = client.send(msg) {
+                error!(format!("Sending to background client failed: {}", e));
+            }
+        }
+        Ok(())
+    }
+}
+
+struct Csv {}
+
+impl Mapper for Csv {
+    fn import(&self, layout: &Layout, client: &InfluxClient) -> ConvertResult<()> {
+        Ok(())
+    }
+}
+
 /// A basic CSV file uses the comma for seperation and
 /// has no irrelevant rows or columns.
 ///
@@ -139,13 +216,13 @@ impl CsvLayout {
         let header: String = match csv_start.next() {
             Some(Ok(h)) => h,
             _ => {
-                return Err(ConvertError::Import("header", 0));
+                return Err(ConvertError::Import("header"));
             }
         };
 
         // get columns of interrest
         let h: Vec<&str> = header.split(self.del).collect();
-        let (val_col, tags_col, time_col) = self.layout.apply(h.as_slice())?;
+        let (val_col, tags_col, time_col) = (0, vec![0], 0); //self.layout.apply(h.as_slice())?;
 
         for (i, row) in csv_start.enumerate() {
             if let Ok(r) = row {
@@ -185,8 +262,6 @@ impl CsvLayout {
     }
 }
 
-fn interactive_mode() {}
-
 fn main() {
     let _args: Args = Docopt::new(USAGE)
         .and_then(|d| d.deserialize())
@@ -200,6 +275,7 @@ fn main() {
         set_debug!();
     }
 
+    debug!(format!("{:?}", _args));
     let client = match InfluxClient::new(
         _args.flag_server,
         _args.flag_user,
@@ -207,7 +283,10 @@ fn main() {
         _args.flag_database,
         _args.flag_series,
     ) {
-        Ok(c) => c,
+        Ok(c) => {
+            info!("Background influx client up and running.");
+            c
+        }
         Err(e) => {
             println!("Failed to start client. {}", e);
             return;
@@ -220,10 +299,15 @@ fn main() {
         time: _args.flag_time,
         tformat: _args.flag_format,
     };
+    debug!(format!("{:?}", layout));
 
-    match _args.cmd_i {
-        true => interactive_mode(),
-        false => {}
+    let mapper: Box<Mapper> = match _args.cmd_i {
+        true => Box::new(Interactive {}),
+        false => Box::new(Csv {}),
+    };
+
+    if let Err(e) = mapper.import(&layout, &client) {
+        error!(format!("Import failed {}", e));
     }
     /*
     let layout = CsvLayout::new(

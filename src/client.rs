@@ -77,7 +77,6 @@ impl InfluxClient {
                 vec![&hosts],
             );
 
-            info!("Background influx client up and running.");
             loop {
                 let msg: Option<Message> = match rx.recv() {
                     Ok(m) => m,

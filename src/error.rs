@@ -60,7 +60,7 @@ pub enum ConvertError {
     /// If some element is not found but required.
     NotFound(&'static str),
     /// If the row conversion failed.
-    Import(&'static str, i32),
+    Import(&'static str),
     /// Failed to start influx client
     Influx(io::Error),
     /// Thread joining failed
@@ -73,7 +73,7 @@ impl fmt::Display for ConvertError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             ConvertError::NotFound(ref s) => write!(f, "Column {} not found in header line.", s),
-            ConvertError::Import(ref s, ref i) => write!(f, "Failed to convert {}, row {}.", s, i),
+            ConvertError::Import(ref s) => write!(f, "{}.", s),
             ConvertError::Influx(ref err) => fmt::Display::fmt(err, f),
             ConvertError::Join(ref s) => {
                 write!(f, "Failed to gracefully shutdown the client: {:?}", s)
@@ -87,7 +87,7 @@ impl Error for ConvertError {
     fn description(&self) -> &str {
         match *self {
             ConvertError::NotFound(ref s) => s,
-            ConvertError::Import(ref s, _) => s,
+            ConvertError::Import(ref s) => s,
             ConvertError::Join(_) => "Failed to gracefully shutdown the influx client",
             ConvertError::Influx(ref err) => err.description(),
             ConvertError::Send(ref err) => err.description(),
