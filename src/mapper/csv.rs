@@ -14,6 +14,7 @@ use chrono::{TimeZone, Utc};
 /// are inserted.
 ///
 /// Todo: [ ] Merge columns
+///       [ ] Batch mode
 #[derive(Debug)]
 pub struct Csv {
     files: Vec<String>,
@@ -103,7 +104,7 @@ impl Mapper for Csv {
 
             let reader = try!(self.open(file));
             let mut lines = reader.lines().skip(self.first_row + 1);
-            for line in lines.next() {
+            for line in lines {
                 let data = try!(line.and_then(|l| Ok(self.split(&l))));
 
                 let value = (layout.measure.clone(), data[measure].clone());
@@ -127,7 +128,6 @@ impl Mapper for Csv {
                 }
             }
         }
-        debug!("out");
         Ok(())
     }
 }
@@ -161,7 +161,6 @@ mod test {
 
     #[test]
     fn test_import() {
-        set_debug!();
         let client = test::start_client();
         let mut layout = Layout::default();
         layout.measure = "Profilwert kWh".into();
