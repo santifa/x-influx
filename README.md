@@ -7,6 +7,10 @@ for importing data into a running influx instance.
 At the moment csv data and interactive input are the
 only supported import methods. 
 
+## Install
+
+`cargo install x-influx`
+
 The modes are
 `x-influx i ...` - interactive mode  
 `x-influx b ...` - batch mode (not implemented)  

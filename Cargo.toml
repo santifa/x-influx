@@ -17,11 +17,6 @@ exclude = ["assets/*"]
 keywords = ["cli", "influxdb", "csv"]
 categories = ["command-line-utilities"]
 
-# links
-[badges]
-appveyor = { repository = "https://github.com/santifa/x-influx", branch = "master", service = "github" }
-travis-ci = { repository = "https://travis-ci.org/santifa/x-influx", branch = "master" }
-
 [dependencies]
 chrono = "~0.4"
 influent = "~0.4"
