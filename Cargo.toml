@@ -11,6 +11,8 @@ repository = "https://github.com/santifa/x-influx"
 readme = "README.md"
 license-file = "LICENSE"
 
+exclude = ["assets/*"]
+
 # how to categorize
 keywords = ["cli", "influxdb", "csv"]
 categories = ["Command line utilities"]
