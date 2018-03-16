@@ -3,7 +3,7 @@
 //! fields as well as an abstraction for implementing
 //! some data mapper.
 
-use error::{ConvertError, ConvertResult};
+pub use error::{ConvertError, ConvertResult};
 use client::InfluxClient;
 
 pub use self::interactive::Interactive;

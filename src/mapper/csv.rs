@@ -8,13 +8,16 @@ use std::io::{BufRead, BufReader, Lines, Read};
 use client::Message;
 use chrono::{TimeZone, Utc};
 
+/// A convient struct to model csv data.
+///
 /// To react to inappropriate csv files
 /// we can change the delimiter, skip initial
 /// rows and only columns named by the layout
 /// are inserted.
 ///
-/// Todo: [ ] Merge columns
-///       [ ] Batch mode
+/// Todo:
+///   - [ ] Merge columns
+///   - [ ] Batch mode
 #[derive(Debug)]
 pub struct Csv {
     files: Vec<String>,

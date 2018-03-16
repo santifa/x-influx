@@ -32,6 +32,8 @@ impl Message {
     }
 }
 
+/// Background process for importing
+/// data.
 #[derive(Debug)]
 pub struct InfluxClient {
     tx: Sender<Option<Message>>,

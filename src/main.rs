@@ -33,8 +33,8 @@ mod error;
 mod client;
 mod mapper;
 
-use client::InfluxClient;
-use mapper::{Csv, Interactive, Layout, Mapper};
+pub use client::InfluxClient;
+pub use mapper::{Csv, Interactive, Layout, Mapper};
 
 const VERSION: &'static str = "
 Version 0.5 of x-influx.
