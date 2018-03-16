@@ -81,7 +81,7 @@ impl InfluxClient {
                 let msg: Option<Message> = match rx.recv() {
                     Ok(m) => m,
                     Err(e) => {
-                        error!(format!("Can't recieve message. {}", e));
+                        error!(format!("Failed: {}", e));
                         continue; // maybe some better error handling
                     }
                 };
@@ -116,7 +116,7 @@ impl InfluxClient {
 }
 
 #[cfg(test)]
-mod test {
+pub mod test {
     use super::*;
     use std::time::Duration;
     use chrono::NaiveDateTime;
@@ -136,7 +136,7 @@ mod test {
     }
 
     // start the test background client
-    fn start_client() -> InfluxClient {
+    pub fn start_client() -> InfluxClient {
         clean_db();
         InfluxClient::new(
             "http://localhost:8086".into(),

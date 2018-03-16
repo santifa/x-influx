@@ -22,12 +22,18 @@ pub enum Level {
 
 #[macro_export]
 macro_rules! info {
-    ($e:expr) => { println!("{} Info: {:?}", Utc::now().format("%F %T"), $e); }
+    ($e:expr) => {{
+        use chrono::Utc;
+        println!("{} Info: {:?}", Utc::now().format("%F %T"), $e);
+    }}
 }
 
 #[macro_export]
 macro_rules! error {
-    ($e:expr) => { println!("{} Error: {:?}", Utc::now().format("%F %T"), $e); }
+    ($e:expr) => {{
+        use chrono::Utc;
+        println!("{} Error: {:?}", Utc::now().format("%F %T"), $e);
+    }}
 }
 
 /// Print debug messages only if the logger struct
@@ -35,6 +41,7 @@ macro_rules! error {
 #[macro_export]
 macro_rules! debug {
     ($e:expr) => {unsafe {
+        use chrono::Utc;
         use error::{Level, LOGGER};
         if LOGGER.0 == Level::Debug {
             println!("{} Debug: {:?}", Utc::now().format("%F %T"), $e);
@@ -58,9 +65,9 @@ pub type ConvertResult<T> = Result<T, ConvertError>;
 #[derive(Debug)]
 pub enum ConvertError {
     /// If some element is not found but required.
-    NotFound(&'static str),
+    NotFound(String),
     /// If the row conversion failed.
-    Import(&'static str),
+    Import(String),
     /// Failed to start influx client
     Influx(io::Error),
     /// Thread joining failed
@@ -72,7 +79,7 @@ pub enum ConvertError {
 impl fmt::Display for ConvertError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            ConvertError::NotFound(ref s) => write!(f, "Column {} not found in header line.", s),
+            ConvertError::NotFound(ref s) => write!(f, "Header {} not found in top row.", s),
             ConvertError::Import(ref s) => write!(f, "{}.", s),
             ConvertError::Influx(ref err) => fmt::Display::fmt(err, f),
             ConvertError::Join(ref s) => {
