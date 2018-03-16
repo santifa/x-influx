@@ -96,10 +96,10 @@ impl InfluxClient {
 
                 debug!(format!("Incoming: {:?}", m));
                 let mut measure = Measurement::new(&series);
-                measure.add_field(&m.value.0, Value::String(&m.value.1));
+                measure.add_field(m.value.0.as_str(), Value::String(&m.value.1));
                 measure.set_timestamp(m.time * 1000000000); // convert to nanoseconds
                 for ref tag in &m.tags {
-                    measure.add_tag(&tag.0, &tag.1);
+                    measure.add_tag(tag.0.as_str(), tag.1.as_str());
                 }
 
                 if let Err(e) = client.write_one(measure, None) {
