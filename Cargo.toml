@@ -15,7 +15,7 @@ exclude = ["assets/*"]
 
 # how to categorize
 keywords = ["cli", "influxdb", "csv"]
-categories = ["Command line utilities"]
+categories = ["command-line-utilities"]
 
 # links
 [badges]
