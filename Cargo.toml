@@ -1,6 +1,6 @@
 [package]
 name = "x-influx"
-version = "0.9.1"
+version = "0.9.2"
 authors = ["Henrik Jürges <juerges.henrik@gmail.com>"]
 description = "A simple import tool for influxdb."
 
