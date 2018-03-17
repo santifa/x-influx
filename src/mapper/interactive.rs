@@ -1,4 +1,4 @@
-//! The interactive import mapper let's you
+//! The interactive import mapper lets you
 //! define the influx input by hand.
 
 use super::*;
@@ -7,7 +7,7 @@ use std::io::{self, Write};
 use chrono::{TimeZone, Utc};
 use client::Message;
 
-/// Stub struct for satasfying the trait
+/// Stub struct for satisfying the trait
 /// and some handy input functions.
 #[derive(Debug)]
 pub struct Interactive {}
