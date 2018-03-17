@@ -1,4 +1,4 @@
-//! A basic csv import which ca skip
+//! A basic csv import which can skip
 //! front rows and ignore columns.
 use super::*;
 
@@ -8,7 +8,7 @@ use std::io::{BufRead, BufReader, Lines, Read};
 use client::Message;
 use chrono::{TimeZone, Utc};
 
-/// A convient struct to model csv data.
+/// A convenient struct to model csv data.
 ///
 /// To react to inappropriate csv files
 /// we can change the delimiter, skip initial

@@ -15,7 +15,7 @@ mod csv;
 /// A layout describes the names for the database
 /// fields used by influx.
 /// See https://docs.rs/chrono/0.4.0/chrono/format/strftime/index.html
-/// for time formating.
+/// for time formatting.
 #[derive(Debug, Clone)]
 pub struct Layout {
     pub measure: String,
@@ -35,7 +35,7 @@ impl Default for Layout {
     }
 }
 
-/// A mapper applys the given `Layout` to some
+/// A mapper applies the given `Layout` to some
 /// piece of data.
 pub trait Mapper {
     /// Returns error if the mapping or sending process failed.

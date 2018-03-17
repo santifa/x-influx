@@ -34,9 +34,9 @@ The modes are
       -s, --server SRV     The influxdb server for import 
                            [default: http://localhost:8086].
   
-      -S, --series VAL     Name of the measuremnt series [default: series]
+      -S, --series VAL     Name of the measurement series [default: series]
       -m, --measure VAL    Name of the measurement value [default: data].
-      -t, --tags VAL       Comma seperated list of tags associated to a value.
+      -t, --tags VAL       Comma separated list of tags associated to a value.
       -T, --time VAL       Name of the timestamp column [default: timestamp].
       -f, --format FMT     The timestamp format [default: %F %H:%M:%S]
                            See https://docs.rs/chrono/0.4.0/chrono/format/strftime/index.html

@@ -42,7 +42,7 @@ pub struct InfluxClient {
 
 impl InfluxClient {
     /// Use this method to shutdown the influx client
-    /// instead of simple dropping.
+    /// instead of simply dropping.
     pub fn join(self) -> ConvertResult<()> {
         self.tx
             .send(None)
@@ -50,14 +50,14 @@ impl InfluxClient {
             .and_then(|()| self.thread_handle.join().map_err(ConvertError::Join))
     }
 
-    /// Convient method for sending data to running background influx client.
+    /// Convenient method for sending data to running background influx client.
     pub fn send(&self, msg: Message) -> ConvertResult<()> {
         self.tx.send(Some(msg)).map_err(ConvertError::Send)
     }
 
     /// Construct a new influx db background client
     /// which accepts messages and stores them.
-    /// It stops if it recieves a None message.
+    /// It stops if it receives a None message.
     pub fn new(
         hosts: String,
         user: String,
